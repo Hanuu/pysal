@@ -1,6 +1,10 @@
-from setuptools import setup
+try:
+    from setuptools import setup
+except ImportError:
+    from distutils.core import setup
 
-setup(name='pyimgsaliency',
+config = dict(
+      name='pyimgsaliency',
       version='0.1.1',
       description='A package for calculating image saliency',
       url='https://github.com/mamrehn/pyimgsaliency',
@@ -8,4 +12,9 @@ setup(name='pyimgsaliency',
       author_email='none',
       license='Apache',
       packages=['pyimgsaliency'],
-      zip_safe=False)
+      zip_safe=False
+)
+
+requires = ('numpy', 'scipy', 'skimage')
+
+setup(requires=requires, **config)
