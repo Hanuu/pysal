@@ -6,10 +6,10 @@ import networkx as nx
 import numpy as np
 import scipy.spatial.distance
 import scipy.signal
-import skimage
-import skimage.io
+from skimage.io import imread as skimage_imread
 from skimage.segmentation import slic
 from skimage.util import img_as_float
+from skimage.color import rgb2gray, gray2rgb, rgb2lab
 # from scipy.optimize import minimize
 # import pdb
 
@@ -69,16 +69,16 @@ def get_saliency_rbd(img):
     # IEEE Conference on Computer Vision and Pattern Recognition (CVPR), 2014
 
     if isinstance(img, str):  # img is img_path string
-        img = skimage.io.imread(img)
+        img = skimage_imread(img)
 
     if len(img.shape) != 3:  # got a grayscale image
-        img = skimage.color.gray2rgb(img)
+        img = gray2rgb(img)
 
-    img_lab = img_as_float(skimage.color.rgb2lab(img))
+    img_lab = img_as_float(rgb2lab(img))
 
     img_rgb = img_as_float(img)
 
-    img_gray = img_as_float(skimage.color.rgb2gray(img))
+    img_gray = img_as_float(rgb2gray(img))
 
     segments_slic = slic(img_rgb, n_segments=250, compactness=10, sigma=1, enforce_connectivity=False)
 
@@ -219,11 +219,11 @@ def get_saliency_ft(img):
     # Saliency map calculation based on:
 
     if isinstance(img, str):  # img is img_path string
-        img = skimage.io.imread(img)
+        img = skimage_imread(img)
 
     img_rgb = img_as_float(img)
 
-    img_lab = skimage.color.rgb2lab(img_rgb)
+    img_lab = rgb2lab(img_rgb)
 
     mean_val = np.mean(img_rgb, axis=(0, 1))
 
