@@ -15,6 +15,6 @@ config = dict(
       zip_safe=False
 )
 
-requires = ('numpy', 'scipy', 'skimage')
+requires = ('numpy', 'scipy', 'skimage', 'salientdetect')
 
 setup(requires=requires, **config)

@@ -10,8 +10,29 @@ from skimage.io import imread as skimage_imread
 from skimage.segmentation import slic
 from skimage.util import img_as_float
 from skimage.color import rgb2gray, gray2rgb, rgb2lab
+from salientdetect import saliency_score_from_ndarry
 # from scipy.optimize import minimize
 # import pdb
+
+
+def get_saliency_salientdetect(img, return_score=True):
+    if isinstance(img, str):  # img is img_path string
+        img = skimage_imread(img)
+
+    ret = saliency_score_from_ndarry(img)
+    out = np.zeros(img.shape, dtype=(np.float64 if return_score else np.uint8))
+
+    if return_score:
+        for saliency_score, pixels in ret.items():
+            for x, y in pixels:
+                out[y, x] = saliency_score
+    else:
+        for saliency_score, pixels in ret.items():
+            if saliency_score < 5:
+                continue
+            for x, y in pixels:
+                out[y, x] = 255
+    return out
 
 
 def _func_s(x1, x2, geodesic, sigma_clr=10):  # called by rbd method
