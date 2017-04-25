@@ -15,11 +15,11 @@ from salientdetect import saliency_score_from_ndarry
 # import pdb
 
 
-def get_saliency_salientdetect(img, return_score=True):
+def get_saliency_salientdetect(img, return_score=True, **kwargs):
     if isinstance(img, str):  # img is img_path string
         img = skimage_imread(img)
 
-    ret = saliency_score_from_ndarry(img)
+    ret = saliency_score_from_ndarry(img, **kwargs)
     out = np.zeros(img.shape, dtype=(np.float64 if return_score else np.uint8))
 
     if return_score:
