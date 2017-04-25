@@ -154,11 +154,11 @@ def get_saliency_mbd(img, method='b'):
             cov_top = np.cov(px_top.T)
             cov_bottom = np.cov(px_bottom.T)
 
-            cov_left = np.linalg.inv(cov_left)
-            cov_right = np.linalg.inv(cov_right)
+            cov_left = np.linalg.inv(cov_left + np.eye(cov_left.shape[1]) * 1e-12)
+            cov_right = np.linalg.inv(cov_right + np.eye(cov_right.shape[1]) * 1e-12)
 
-            cov_top = np.linalg.inv(cov_top)
-            cov_bottom = np.linalg.inv(cov_bottom)
+            cov_top = np.linalg.inv(cov_top + np.eye(cov_top.shape[1]) * 1e-12)
+            cov_bottom = np.linalg.inv(cov_bottom + np.eye(cov_bottom.shape[1]) * 1e-12)
 
             # u_left = np.zeros(sal.shape)
             # u_right = np.zeros(sal.shape)
