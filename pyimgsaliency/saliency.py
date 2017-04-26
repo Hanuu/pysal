@@ -77,7 +77,7 @@ def _generate_features(img, sigma_uniqueness=50, sigma_distribution=20, saliency
 
 
 def _up_sample(img_lab, saliency, img_segments_mean, coordinate_segments_mean):  # called by sf method
-    size = img_lab.size / 3
+    size = int(img_lab.size // 3)
     shape = img_lab.shape
     a, b = shape[:2]
     x_axis = np.linspace(0, b - 1, num=b)
