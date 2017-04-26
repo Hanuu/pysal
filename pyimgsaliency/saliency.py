@@ -26,7 +26,16 @@ def get_saliency_salientdetect(img, n_segments=250, compactness=10, sigma=1, enf
         img_as_float(img), n_segments=n_segments, compactness=compactness, sigma=sigma,
         enforce_connectivity=enforce_connectivity, slic_zero=slic_zero)
 
-    ret = calc_saliency_score(img, segment_labels, _load_dist_mat())
+    img_min, img_max = np.min(img), np.max(img)
+    if img_min is 0 and img_max is 1:
+        img_ = 255 * img
+    else:
+        img_ = (img - img_min).astype(np.float64, copy=False)
+        img_ *= 255 / (img_max - img_min)
+    img_uint8 = img_.astype(np.uint8)
+    del img_
+
+    ret = calc_saliency_score(img_uint8, segment_labels, _load_dist_mat())
     out = np.zeros(img.shape, dtype=(np.float64 if return_score else np.uint8))
 
     if return_score:
