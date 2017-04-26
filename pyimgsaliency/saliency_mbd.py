@@ -8,11 +8,13 @@ from scipy.spatial.distance import cdist
 from skimage.io import imread as skimage_imread
 from skimage.util import img_as_float
 from skimage.color import rgb2lab
+from numba import jit
 # from skimage.segmentation import slic
 # from scipy.optimize import minimize
 # import pdb
 
 
+@jit
 def _raster_scan(img, l, u, d):  # called by mbd method
     n_rows = len(img)
     n_cols = len(img[0])
@@ -43,6 +45,7 @@ def _raster_scan(img, l, u, d):  # called by mbd method
                 l[x][y] = min(l2, ix)
 
 
+@jit
 def _raster_scan_inv(img, l, u, d):  # called by mbd method
     n_rows = len(img)
     n_cols = len(img[0])
@@ -74,6 +77,7 @@ def _raster_scan_inv(img, l, u, d):  # called by mbd method
                 l[x][y] = min(l2, ix)
 
 
+@jit
 def mbd(img, num_iters):
     if len(img.shape) != 2:
         print('did not get 2d np array to fast mbd')
@@ -118,6 +122,8 @@ def get_saliency_mbd(img, method='b'):
             img_list = img
     else:
         img_list = (img, )
+
+    result = []
 
     for img in img_list:
         img_mean = np.mean(img, axis=2)
@@ -229,10 +235,14 @@ def get_saliency_mbd(img, method='b'):
 
         def f(x):
             b = 10.0
-            return 1.0 / (1.0 + math.exp(-b * (x - 0.5)))
+            return 255.0 / (1.0 + math.exp(-b * (x - 0.5)))
 
         fv = np.vectorize(f)
 
         sal /= np.max(sal)
         sal = fv(sal)
-        return sal * 255.0
+        result.append(sal)
+
+    if len(result) is 1:
+        return result[0]
+    return result

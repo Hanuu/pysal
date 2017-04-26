@@ -11,10 +11,12 @@ from skimage.segmentation import slic
 from skimage.util import img_as_float
 from skimage.color import rgb2gray, gray2rgb, rgb2lab
 from salientdetect import saliency_score_from_ndarry
+from numba import jit
 # from scipy.optimize import minimize
 # import pdb
 
 
+@jit
 def get_saliency_salientdetect(img, return_score=True, **kwargs):
     if isinstance(img, str):  # img is img_path string
         img = skimage_imread(img)
@@ -35,10 +37,12 @@ def get_saliency_salientdetect(img, return_score=True, **kwargs):
     return out
 
 
+@jit
 def _func_s(x1, x2, geodesic, sigma_clr=10):  # called by rbd method
     return math.exp(-pow(geodesic[x1, x2], 2) / (2 * sigma_clr * sigma_clr))
 
 
+@jit
 def _compute_saliency_cost(smoothness, w_bg, w_ctr):  # called by rbd method
     n = len(w_bg)
     arr = np.zeros((n, n))
@@ -63,7 +67,7 @@ def _make_graph(grid):  # called by rbd method
     # get unique labels
     vertices = np.unique(grid)
 
-    # map unique labels to [1,...,num_labels]
+    # map unique labels to [1, ..., num_labels]
     reverse_dict = dict(zip(vertices, np.arange(len(vertices))))
     grid = np.array([reverse_dict[x] for x in grid.flat]).reshape(grid.shape)
 
@@ -101,7 +105,7 @@ def get_saliency_rbd(img):
 
     img_gray = img_as_float(rgb2gray(img))
 
-    segments_slic = slic(img_rgb, n_segments=250, compactness=10, sigma=1, enforce_connectivity=False)
+    segments_slic = slic(img_rgb, n_segments=250, compactness=10, sigma=1, enforce_connectivity=False)  # TODO test slic_zero=True
 
     # num_segments = len(np.unique(segments_slic))
 
@@ -236,6 +240,7 @@ def get_saliency_rbd(img):
     return sal
 
 
+@jit
 def get_saliency_ft(img):
     # Saliency map calculation based on:
 
