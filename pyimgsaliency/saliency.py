@@ -16,8 +16,8 @@ from salientdetect import saliency_score_from_ndarry
 # import pdb
 
 
-@jit
-def get_saliency_salientdetect(img, n_segments=250, compactness=10, sigma=1, enforce_connectivity=False, slic_zero=False, return_score=True, binarization_min_val=5):
+def get_saliency_salientdetect(img, n_segments=250, compactness=10, sigma=1, enforce_connectivity=False,
+                               slic_zero=False, return_score=True, binarization_min_val=5):
     if isinstance(img, str):  # img is img_path string
         img = skimage_imread(img)
     try:
