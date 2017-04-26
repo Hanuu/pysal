@@ -17,11 +17,15 @@ from salientdetect import saliency_score_from_ndarry
 
 
 @jit
-def get_saliency_salientdetect(img, return_score=True):
+def get_saliency_salientdetect(img, n_segments=250, compactness=10, sigma=1, enforce_connectivity=False, slic_zero=False, return_score=True, binarization_min_val=5):
     if isinstance(img, str):  # img is img_path string
         img = skimage_imread(img)
-
-    ret = saliency_score_from_ndarry(img)
+    try:
+        ret = saliency_score_from_ndarry(img, n_segments=n_segments, compactness=compactness, sigma=sigma,
+                                         enforce_connectivity=enforce_connectivity, slic_zero=slic_zero)
+    except:
+        print('old version of "saliency_score_from_ndarry". Omitting parameters.')
+        ret = saliency_score_from_ndarry(img)
     out = np.zeros(img.shape, dtype=(np.float64 if return_score else np.uint8))
 
     if return_score:
@@ -30,7 +34,7 @@ def get_saliency_salientdetect(img, return_score=True):
                 out[y, x] = saliency_score
     else:
         for saliency_score, pixels in ret.items():
-            if saliency_score < 5:
+            if saliency_score < binarization_min_val:
                 continue
             for x, y in pixels:
                 out[y, x] = 255
@@ -248,7 +252,6 @@ def get_saliency_ft(img):
         img = skimage_imread(img)
 
     img_rgb = img_as_float(img)
-
     img_lab = rgb2lab(img_rgb)
 
     mean_val = np.mean(img_rgb, axis=(0, 1))
@@ -267,7 +270,9 @@ def get_saliency_ft(img):
     im_blurred = np.dstack([blurred_l, blurred_a, blurred_b])
 
     sal = np.linalg.norm(mean_val - im_blurred, axis=2)
-    sal_max = np.max(sal)
-    sal_min = np.min(sal)
-    sal = 255 * ((sal - sal_min) / (sal_max - sal_min))  # normalize to [0, 255[
+
+    # normalize to [0, 255[
+    sal -= np.min(sal)
+    sal *= 255.0 / np.max(sal)
+
     return sal
