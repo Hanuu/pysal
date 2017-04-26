@@ -1,4 +1,5 @@
 import math
+import copy
 # import sys
 # import operator
 # import networkx as nx
@@ -9,6 +10,7 @@ from skimage.io import imread as skimage_imread
 from skimage.util import img_as_float
 from skimage.color import rgb2lab
 from numba import jit
+import numexpr as ne
 # from skimage.segmentation import slic
 # from scipy.optimize import minimize
 # import pdb
@@ -86,8 +88,8 @@ def mbd(img, num_iters):
         print('image is too small')
         return None
 
-    l = np.copy(img)
-    u = np.copy(img)
+    # l = np.copy(img)
+    # u = np.copy(img)
     d = np.empty_like(img)
     d.fill(np.inf)
 
@@ -96,8 +98,8 @@ def mbd(img, num_iters):
 
     # unfortunately, iterating over numpy arrays is very slow
     img_list = img.tolist()
-    l_list = l.tolist()
-    u_list = u.tolist()
+    l_list = copy.deepcopy(img_list)
+    u_list = copy.deepcopy(img_list)
     d_list = d.tolist()
 
     for x in range(num_iters):
@@ -109,10 +111,19 @@ def mbd(img, num_iters):
     return np.array(d_list)
 
 
-def get_saliency_mbd(img, method='b'):
-    # Saliency map calculation based on: Minimum Barrier Salient Object Detection at 80 FPS
+def get_saliency_mbd(img, method='b', border_thickness_percent=0.1):
+    """
+    Generate saliency map via minimum barrier detection.
+    Source: Jianming Zhang, Stan Sclaroff, Zhe Lin, Xiaohui Shen, Brian Price and Radomír Měch.
+            "Minimum Barrier Salient Object Detection at 80 FPS."
 
-    # we get either a file name or a list of file names
+    :param img: either ndarray, image path string or lists of them.  
+    :param method: string, 'b' for background map
+    :param border_thickness_percent: float, 10% in the paper
+    :return: ndarray representation of the mdb saliency map
+    """
+
+    # convert input to an interable of ndarrays
     if isinstance(img, str):
         img_list = (skimage_imread(img), )
     elif isinstance(img, list):
@@ -133,14 +144,14 @@ def get_saliency_mbd(img, method='b'):
             # paper uses 30px for an image of size 300px, so we use 10%
             n_rows, n_cols = img.shape[:2]
             img_size = math.sqrt(n_rows * n_cols)
-            border_thickness = int(img_size * 0.1)
+            border_thickness = int(img_size * border_thickness_percent)
 
             img_lab = img_as_float(rgb2lab(img))
 
-            px_left = img_lab[0:border_thickness, :, :]
+            px_left = img_lab[:border_thickness, :, :]
             px_right = img_lab[n_rows - border_thickness - 1:-1, :, :]
 
-            px_top = img_lab[:, 0:border_thickness, :]
+            px_top = img_lab[:, :border_thickness, :]
             px_bottom = img_lab[:, n_cols - border_thickness - 1:-1, :]
 
             px_mean_left = np.mean(px_left, axis=(0, 1))
@@ -166,60 +177,45 @@ def get_saliency_mbd(img, method='b'):
             cov_top = np.linalg.inv(cov_top + np.eye(cov_top.shape[1]) * 1e-12)
             cov_bottom = np.linalg.inv(cov_bottom + np.eye(cov_bottom.shape[1]) * 1e-12)
 
-            # u_left = np.zeros(sal.shape)
-            # u_right = np.zeros(sal.shape)
-            # u_top = np.zeros(sal.shape)
-            # u_bottom = np.zeros(sal.shape)
-            #
-            # u_final = np.zeros(sal.shape)
             img_lab_unrolled = img_lab.reshape(img_lab.shape[0] * img_lab.shape[1], 3)
+            img_lab_shape = img_lab.shape[:2]
 
             px_mean_left_2 = np.zeros((1, 3))
             px_mean_left_2[0, :] = px_mean_left
 
-            u_left = cdist(img_lab_unrolled, px_mean_left_2, 'mahalanobis', VI=cov_left)
-            u_left = u_left.reshape((img_lab.shape[0], img_lab.shape[1]))
+            u_left = cdist(img_lab_unrolled, px_mean_left_2, metric='mahalanobis', VI=cov_left)
+            u_left = u_left.reshape(img_lab_shape)
 
             px_mean_right_2 = np.zeros((1, 3))
             px_mean_right_2[0, :] = px_mean_right
 
-            u_right = cdist(img_lab_unrolled, px_mean_right_2, 'mahalanobis', VI=cov_right)
-            u_right = u_right.reshape((img_lab.shape[0], img_lab.shape[1]))
+            u_right = cdist(img_lab_unrolled, px_mean_right_2, metric='mahalanobis', VI=cov_right)
+            u_right = u_right.reshape(img_lab_shape)
 
             px_mean_top_2 = np.zeros((1, 3))
             px_mean_top_2[0, :] = px_mean_top
 
-            u_top = cdist(img_lab_unrolled, px_mean_top_2, 'mahalanobis', VI=cov_top)
-            u_top = u_top.reshape((img_lab.shape[0], img_lab.shape[1]))
+            u_top = cdist(img_lab_unrolled, px_mean_top_2, metric='mahalanobis', VI=cov_top)
+            u_top = u_top.reshape(img_lab_shape)
 
             px_mean_bottom_2 = np.zeros((1, 3))
             px_mean_bottom_2[0, :] = px_mean_bottom
 
-            u_bottom = cdist(img_lab_unrolled, px_mean_bottom_2, 'mahalanobis', VI=cov_bottom)
-            u_bottom = u_bottom.reshape((img_lab.shape[0], img_lab.shape[1]))
+            u_bottom = cdist(img_lab_unrolled, px_mean_bottom_2, metric='mahalanobis', VI=cov_bottom)
+            u_bottom = u_bottom.reshape(img_lab_shape)
 
-            max_u_left = np.max(u_left)
-            max_u_right = np.max(u_right)
-            max_u_top = np.max(u_top)
-            max_u_bottom = np.max(u_bottom)
+            u_left /= np.max(u_left)
+            u_right /= np.max(u_right)
+            u_top /= np.max(u_top)
+            u_bottom /= np.max(u_bottom)
 
-            u_left = u_left / max_u_left
-            u_right = u_right / max_u_right
-            u_top = u_top / max_u_top
-            u_bottom = u_bottom / max_u_bottom
-
-            u_max = np.maximum(np.maximum(np.maximum(u_left, u_right), u_top), u_bottom)
-
-            u_final = (u_left + u_right + u_top + u_bottom) - u_max
-
-            u_max_final = np.max(u_final)
-            sal_max = np.max(sal)
-            sal = sal / sal_max + u_final / u_max_final
+            u_max = np.maximum.reduce([u_left, u_right, u_top, u_bottom])
+            u_final = ne.evaluate('(u_left + u_right + u_top + u_bottom) - u_max')
+            sal /= np.max(sal)
+            sal += u_final / np.max(u_final)
 
         # postprocessing
-
-        # apply centeredness map
-        sal /= np.max(sal)
+        # # apply centeredness map
 
         # s = np.mean(sal)
         # alpha = 50.0
@@ -228,19 +224,13 @@ def get_saliency_mbd(img, method='b'):
         xv, yv = np.meshgrid(np.arange(sal.shape[1]), np.arange(sal.shape[0]))
         w2, h2 = np.array(sal.shape) / 2
 
-        c = 1 - np.sqrt(np.square(xv - h2) + np.square(yv - w2)) / math.sqrt(np.square(w2) + np.square(h2))
-        sal *= c
+        sal /= np.max(sal)
+        sal = ne.evaluate('(1 - sqrt((xv - h2)**2 + (yv - w2)**2) / sqrt(w2**2 + h2**2)) * sal')
 
-        # increase bg/fg contrast
-
-        def f(x):
-            b = 10.0
-            return 255.0 / (1.0 + math.exp(-b * (x - 0.5)))
-
-        fv = np.vectorize(f)
+        # # increase bg/fg contrast
 
         sal /= np.max(sal)
-        sal = fv(sal)
+        sal = ne.evaluate('255.0 / (1 + exp(-10 * (sal - 0.5)))')
         result.append(sal)
 
     if len(result) is 1:

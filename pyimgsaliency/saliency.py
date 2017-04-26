@@ -1,17 +1,17 @@
 import math
 # import sys
 # import operator
+import numpy as np
 import networkx as nx
 # import matplotlib.pyplot as plt
-import numpy as np
-import scipy.spatial.distance
-import scipy.signal
+from scipy.signal import convolve2d
+from scipy.spatial.distance import euclidean
+from skimage.color import rgb2gray, gray2rgb, rgb2lab
 from skimage.io import imread as skimage_imread
 from skimage.segmentation import slic
 from skimage.util import img_as_float
-from skimage.color import rgb2gray, gray2rgb, rgb2lab
-from salientdetect import saliency_score_from_ndarry
 from numba import jit
+from salientdetect import saliency_score_from_ndarry
 # from scipy.optimize import minimize
 # import pdb
 
@@ -69,7 +69,7 @@ def _make_graph(grid):  # called by rbd method
 
     # map unique labels to [1, ..., num_labels]
     reverse_dict = dict(zip(vertices, np.arange(len(vertices))))
-    grid = np.array([reverse_dict[x] for x in grid.flat]).reshape(grid.shape)
+    grid = np.array([reverse_dict[x] for x in grid.ravel()]).reshape(grid.shape)
 
     # create edges
     down = np.c_[grid[:-1, :].ravel(), grid[1:, :].ravel()]
@@ -88,35 +88,14 @@ def _make_graph(grid):  # called by rbd method
     return vertices, edges
 
 
-def get_saliency_rbd(img):
-    # Saliency map calculation based on:
-    # Saliency Optimization from Robust Background Detection, Wangjiang Zhu, Shuang Liang, Yichen Wei and Jian Sun,
-    # IEEE Conference on Computer Vision and Pattern Recognition (CVPR), 2014
-
-    if isinstance(img, str):  # img is img_path string
-        img = skimage_imread(img)
-
-    if len(img.shape) != 3:  # got a grayscale image
-        img = gray2rgb(img)
-
-    img_lab = img_as_float(rgb2lab(img))
-
-    img_rgb = img_as_float(img)
-
-    img_gray = img_as_float(rgb2gray(img))
-
-    segments_slic = slic(img_rgb, n_segments=250, compactness=10, sigma=1, enforce_connectivity=False)  # TODO test slic_zero=True
-
-    # num_segments = len(np.unique(segments_slic))
-
-    nrows, ncols = segments_slic.shape
+@jit
+def _rbd(grid, img_lab, img_gray):
+    nrows, ncols = grid.shape
     max_dist = math.sqrt(nrows * nrows + ncols * ncols)
-
-    grid = segments_slic
 
     vertices, edges = _make_graph(grid)
 
-    gridx, gridy = np.mgrid[:grid.shape[0], :grid.shape[1]]
+    grid_x, grid_y = np.mgrid[:grid.shape[0], :grid.shape[1]]
 
     centers = dict()
     colors = dict()
@@ -124,11 +103,11 @@ def get_saliency_rbd(img):
     boundary = dict()
 
     for v in vertices:
-        centers[v] = [gridy[grid == v].mean(), gridx[grid == v].mean()]
+        centers[v] = [grid_y[grid == v].mean(), grid_x[grid == v].mean()]
         colors[v] = np.mean(img_lab[grid == v], axis=0)
 
-        x_pix = gridx[grid == v]
-        y_pix = gridy[grid == v]
+        x_pix = grid_x[grid == v]
+        y_pix = grid_y[grid == v]
 
         if np.any(x_pix == 0) or np.any(y_pix == 0) or np.any(x_pix == nrows - 1) or np.any(y_pix == ncols - 1):
             boundary[v] = 1
@@ -141,7 +120,7 @@ def get_saliency_rbd(img):
     for edge in edges:
         pt1 = edge[0]
         pt2 = edge[1]
-        color_distance = scipy.spatial.distance.euclidean(colors[pt1], colors[pt2])
+        color_distance = euclidean(colors[pt1], colors[pt2])
         graph.add_edge(pt1, pt2, weight=color_distance)
 
     # add a new edge in graph if edges are both on boundary
@@ -149,13 +128,13 @@ def get_saliency_rbd(img):
         if boundary[v1] == 1:
             for v2 in vertices:
                 if boundary[v2] == 1:
-                    color_distance = scipy.spatial.distance.euclidean(colors[v1], colors[v2])
+                    color_distance = euclidean(colors[v1], colors[v2])
                     graph.add_edge(v1, v2, weight=color_distance)
 
-    geodesic = np.zeros((len(vertices), len(vertices)), dtype=float)
-    spatial = np.zeros((len(vertices), len(vertices)), dtype=float)
-    smoothness = np.zeros((len(vertices), len(vertices)), dtype=float)
-    adjacency = np.zeros((len(vertices), len(vertices)), dtype=float)
+    geodesic = np.zeros((len(vertices),) * 2, dtype=np.float64)
+    spatial = np.zeros_like(geodesic)
+    smoothness = np.zeros_like(geodesic)
+    adjacency = np.zeros_like(geodesic)
 
     sigma_clr = 10.0
     sigma_bndcon = 1.0
@@ -171,9 +150,10 @@ def get_saliency_rbd(img):
                 spatial[v1, v2] = 0
                 smoothness[v1, v2] = 0
             else:
-                geodesic[v1, v2] = _path_length(all_shortest_paths_color[v1][v2], graph)
-                spatial[v1, v2] = scipy.spatial.distance.euclidean(centers[v1], centers[v2]) / max_dist
-                smoothness[v1, v2] = math.exp(- (geodesic[v1, v2] * geodesic[v1, v2]) / (2.0 * sigma_clr * sigma_clr)) + mu
+                geod_ = _path_length(all_shortest_paths_color[v1][v2], graph)
+                geodesic[v1, v2] = geod_
+                spatial[v1, v2] = euclidean(centers[v1], centers[v2]) / max_dist
+                smoothness[v1, v2] = math.exp(- geod_ ** 2 / (2.0 * sigma_clr * sigma_clr)) + mu
 
     for edge in edges:
         pt1 = edge[0]
@@ -182,8 +162,7 @@ def get_saliency_rbd(img):
         adjacency[pt2, pt1] = 1
 
     for v1 in vertices:
-        for v2 in vertices:
-            smoothness[v1, v2] = adjacency[v1, v2] * smoothness[v1, v2]
+        smoothness[v1, vertices] *= adjacency[v1, vertices]
 
     area = dict()
     len_bnd = dict()
@@ -233,11 +212,32 @@ def get_saliency_rbd(img):
     for v in vertices:
         sal[grid == v] = x[v]
 
-    sal_max = np.max(sal)
-    sal_min = np.min(sal)
-    sal = 255 * ((sal - sal_min) / (sal_max - sal_min))  # normalize to [0, 255[
+    # normalize to [0, 255[
+    sal -= np.min(sal)
+    sal *= 255.0 / np.max(sal)
 
     return sal
+
+
+def get_saliency_rbd(img, n_segments=250, compactness=10, sigma=1, enforce_connectivity=False, slic_zero=False):
+    # Saliency map calculation based on:
+    # Saliency Optimization from Robust Background Detection, Wangjiang Zhu, Shuang Liang, Yichen Wei and Jian Sun,
+    # IEEE Conference on Computer Vision and Pattern Recognition (CVPR), 2014
+
+    if isinstance(img, str):  # input is a imgage path string
+        img = skimage_imread(img)
+
+    if len(img.shape) is not 3:  # input is a gray-scale image
+        img = gray2rgb(img)
+
+    img_lab = rgb2lab(img)  # (_prepare_colorarray) calls img_as_float internally
+    img_rgb = img_as_float(img)
+    img_gray = rgb2gray(img)  # (_prepare_colorarray) calls img_as_float internally
+
+    segments_slic = slic(img_rgb, n_segments=n_segments, compactness=compactness, sigma=sigma,
+                         enforce_connectivity=enforce_connectivity, slic_zero=slic_zero)
+
+    return _rbd(grid=segments_slic, img_lab=img_lab, img_gray=img_gray)
 
 
 @jit
@@ -256,13 +256,13 @@ def get_saliency_ft(img):
     kernel_h = (1.0 / 16.0) * np.array([[1, 4, 6, 4, 1]])
     kernel_w = kernel_h.transpose()
 
-    blurred_l = scipy.signal.convolve2d(img_lab[:, :, 0], kernel_h, mode='same')
-    blurred_a = scipy.signal.convolve2d(img_lab[:, :, 1], kernel_h, mode='same')
-    blurred_b = scipy.signal.convolve2d(img_lab[:, :, 2], kernel_h, mode='same')
+    blurred_l = convolve2d(img_lab[:, :, 0], kernel_h, mode='same')
+    blurred_a = convolve2d(img_lab[:, :, 1], kernel_h, mode='same')
+    blurred_b = convolve2d(img_lab[:, :, 2], kernel_h, mode='same')
 
-    blurred_l = scipy.signal.convolve2d(blurred_l, kernel_w, mode='same')
-    blurred_a = scipy.signal.convolve2d(blurred_a, kernel_w, mode='same')
-    blurred_b = scipy.signal.convolve2d(blurred_b, kernel_w, mode='same')
+    blurred_l = convolve2d(blurred_l, kernel_w, mode='same')
+    blurred_a = convolve2d(blurred_a, kernel_w, mode='same')
+    blurred_b = convolve2d(blurred_b, kernel_w, mode='same')
 
     im_blurred = np.dstack([blurred_l, blurred_a, blurred_b])
 
