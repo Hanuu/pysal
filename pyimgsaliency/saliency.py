@@ -107,8 +107,10 @@ def get_saliency_sf(img, sigma_uniqueness=50, sigma_distribution=20, saliency_as
     #
     # https://graphics.ethz.ch/%7Eperazzif/saliency_filters/
     # Inspired by https://github.com/lee88688/saliency_method
+    if isinstance(img, str):  # img is img_path string
+        img = skimage_imread(img)
     img_lab, saliency_assignment, img_segments_mean, coordinate_segments_mean = _generate_features(
-        img, sigma_uniqueness=sigma_uniqueness, sigma_distribution=sigma_distribution,
+        img=img, sigma_uniqueness=sigma_uniqueness, sigma_distribution=sigma_distribution,
         saliency_assignment_k=saliency_assignment_k
     )
     return _up_sample(img_lab, saliency_assignment, img_segments_mean, coordinate_segments_mean)
