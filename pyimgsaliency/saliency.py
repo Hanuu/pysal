@@ -5,7 +5,7 @@ import numpy as np
 import networkx as nx
 # import matplotlib.pyplot as plt
 from scipy.signal import convolve2d
-from scipy.spatial.distance import euclidean
+from scipy.spatial.distance import cdist, euclidean
 from skimage.color import rgb2gray, gray2rgb, rgb2lab
 from skimage.io import imread as skimage_imread
 from skimage.segmentation import slic
@@ -15,6 +15,103 @@ from salientdetect import _load_dist_mat
 from salientdetect.detector import calc_saliency_score
 # from scipy.optimize import minimize
 # import pdb
+
+
+def normalize(img, in_place=False):
+    if in_place:
+        img -= np.min(img)
+    else:
+        img = img - np.min(img)
+    img /= np.max(img)
+    return img
+
+
+def _generate_features(img, sigma_uniqueness=50, sigma_distribution=20, saliency_assignment_k=3):  # called by sf method
+    # prepare variables
+    img_lab = rgb2lab(img)
+    segments = slic(img_lab, n_segments=500, compactness=30.0, convert2lab=False)
+    max_segments = segments.max() + 1
+
+    a, b = img.shape[:2]
+    x_axis = np.linspace(0, b - 1, num=b)
+    y_axis = np.linspace(0, a - 1, num=a)
+
+    x_coordinate = np.tile(x_axis, (a, 1,))
+    y_coordinate = np.tile(y_axis, (b, 1,))
+    y_coordinate = np.transpose(y_coordinate)
+
+    coordinate_segments_mean = np.zeros((max_segments, 2))
+
+    img_l, img_a, img_b = img_lab[:, :, 0], img_lab[:, :, 1], img_lab[:, :, 2]
+
+    img_segments_mean = np.zeros((max_segments, 3))
+
+    for i in range(max_segments):
+        seg_bool = (segments == i)
+        coordinate_segments_mean[i, 0] = np.mean(x_coordinate[seg_bool])
+        coordinate_segments_mean[i, 1] = np.mean(y_coordinate[seg_bool])
+
+        img_segments_mean[i, 0] = np.mean(img_l[seg_bool])
+        img_segments_mean[i, 1] = np.mean(img_a[seg_bool])
+        img_segments_mean[i, 2] = np.mean(img_b[seg_bool])
+
+    # element distribution
+    wc_ij = np.exp(-cdist(img_segments_mean, img_segments_mean) ** 2 / (2 * sigma_distribution ** 2))
+    wc_ij = wc_ij / wc_ij.sum(axis=1)[:, None]
+    mu_i = np.dot(wc_ij, coordinate_segments_mean)
+    distribution = np.dot(wc_ij, np.linalg.norm(coordinate_segments_mean - mu_i, axis=1) ** 2)
+    distribution = normalize(distribution, in_place=True)
+    distribution = np.array([distribution]).T
+
+    # element uniqueness feature
+    wp_ij = np.exp(
+        -cdist(coordinate_segments_mean, coordinate_segments_mean) ** 2 / (2 * sigma_uniqueness ** 2))
+    wp_ij = wp_ij / wp_ij.sum(axis=1)[:, None]
+    uniqueness = np.sum(cdist(img_segments_mean, img_segments_mean) ** 2 * wp_ij, axis=1)
+    uniqueness = normalize(uniqueness)
+    uniqueness = np.array([uniqueness]).T
+
+    saliency_assignment = uniqueness * np.exp(-saliency_assignment_k * distribution)
+
+    return img_lab, saliency_assignment, img_segments_mean, coordinate_segments_mean
+
+
+def _up_sample(img_lab, saliency, img_segments_mean, coordinate_segments_mean):  # called by sf method
+    size = img_lab.size / 3
+    shape = img_lab.shape
+    a, b = shape[:2]
+    x_axis = np.linspace(0, b - 1, num=b)
+    y_axis = np.linspace(0, a - 1, num=a)
+
+    x_coordinate = np.tile(x_axis, (a, 1,))  # create x coordinate
+    y_coordinate = np.tile(y_axis, (b, 1,))  # create y coordinate
+    y_coordinate = np.transpose(y_coordinate)
+
+    c_i = np.concatenate(
+        (img_lab[:, :, 0].reshape(size, 1), img_lab[:, :, 1].reshape(size, 1), img_lab[:, :, 2].reshape(size, 1)),
+        axis=1)
+    p_i = np.concatenate((x_coordinate.reshape(size, 1), y_coordinate.reshape(size, 1)), axis=1)
+    w_ij = np.exp(
+        -1.0 / (2 * 30) * (cdist(c_i, img_segments_mean) ** 2 + cdist(p_i, coordinate_segments_mean) ** 2))
+    w_ij = w_ij / w_ij.sum(axis=1)[:, None]
+    if len(saliency.shape) != 2 or saliency.shape[1] != 1:
+        saliency = saliency[:, None]
+    saliency_pixel = np.dot(w_ij, saliency)
+    return saliency_pixel.reshape(shape[0:2])
+
+
+def get_saliency_sf(img, sigma_uniqueness=50, sigma_distribution=20, saliency_assignment_k=3):
+    # Saliency filters: Contrast based filtering for salient region detection,
+    # F. Perazzi, P. Krähenbühl, Y. Pritch, A. Hornung
+    # IEEE Conference onComputer Vision and Pattern Recognition (CVPR), 2012
+    #
+    # https://graphics.ethz.ch/%7Eperazzif/saliency_filters/
+    # Inspired by https://github.com/lee88688/saliency_method
+    img_lab, saliency_assignment, img_segments_mean, coordinate_segments_mean = _generate_features(
+        img, sigma_uniqueness=sigma_uniqueness, sigma_distribution=sigma_distribution,
+        saliency_assignment_k=saliency_assignment_k
+    )
+    return _up_sample(img_lab, saliency_assignment, img_segments_mean, coordinate_segments_mean)
 
 
 def get_saliency_salientdetect(img, n_segments=250, compactness=10, sigma=1, enforce_connectivity=False,
