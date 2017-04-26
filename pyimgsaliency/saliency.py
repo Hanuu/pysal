@@ -11,7 +11,8 @@ from skimage.io import imread as skimage_imread
 from skimage.segmentation import slic
 from skimage.util import img_as_float
 from numba import jit
-from salientdetect import saliency_score_from_ndarry
+from salientdetect import _load_dist_mat
+from salientdetect.detector import calc_saliency_score
 # from scipy.optimize import minimize
 # import pdb
 
@@ -20,12 +21,12 @@ def get_saliency_salientdetect(img, n_segments=250, compactness=10, sigma=1, enf
                                slic_zero=False, return_score=True, binarization_min_val=5):
     if isinstance(img, str):  # img is img_path string
         img = skimage_imread(img)
-    try:
-        ret = saliency_score_from_ndarry(img, n_segments=n_segments, compactness=compactness, sigma=sigma,
-                                         enforce_connectivity=enforce_connectivity, slic_zero=slic_zero)
-    except:
-        print('old version of "saliency_score_from_ndarry". Omitting parameters.')
-        ret = saliency_score_from_ndarry(img)
+
+    segment_labels = slic(
+        img_as_float(img), n_segments=n_segments, compactness=compactness, sigma=sigma,
+        enforce_connectivity=enforce_connectivity, slic_zero=slic_zero)
+
+    ret = calc_saliency_score(img, segment_labels, _load_dist_mat())
     out = np.zeros(img.shape, dtype=(np.float64 if return_score else np.uint8))
 
     if return_score:
