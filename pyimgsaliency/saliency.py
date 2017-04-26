@@ -11,8 +11,11 @@ from skimage.io import imread as skimage_imread
 from skimage.segmentation import slic
 from skimage.util import img_as_float
 from numba import jit
-from salientdetect import _load_dist_mat
-from salientdetect.detector import calc_saliency_score
+try:
+    from salientdetect import _load_dist_mat
+    from salientdetect.detector import calc_saliency_score
+except ImportError:
+    print('salientdetect is not found on the system')
 # from scipy.optimize import minimize
 # import pdb
 
