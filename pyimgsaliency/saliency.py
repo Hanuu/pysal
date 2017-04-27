@@ -353,7 +353,11 @@ def get_saliency_rbd(img, n_segments=250, compactness=10, sigma=1, enforce_conne
     segments_slic = slic(img_rgb, n_segments=n_segments, compactness=compactness, sigma=sigma,
                          enforce_connectivity=enforce_connectivity, slic_zero=slic_zero)
 
-    return _rbd(grid=segments_slic, img_lab=img_lab, img_gray=img_gray)
+    try:
+        res = _rbd(grid=segments_slic, img_lab=img_lab, img_gray=img_gray)
+    except np.linalg.LinAlgError:
+        res = np.zeros_like(img_lab, dtype=np.float64)
+    return res
 
 
 @jit
