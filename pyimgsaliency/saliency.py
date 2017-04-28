@@ -155,7 +155,7 @@ def get_saliency_salientdetect(img, n_segments=250, compactness=10, sigma=1, enf
 
 @jit
 def _func_s(x1, x2, geodesic, sigma_clr=10):  # called by rbd method
-    return math.exp(-pow(geodesic[x1, x2], 2) / (2 * sigma_clr * sigma_clr))
+    return math.exp(- (geodesic[x1, x2] ** 2) / (2 * sigma_clr * sigma_clr))
 
 
 @jit
@@ -164,15 +164,14 @@ def _compute_saliency_cost(smoothness, w_bg, w_ctr):  # called by rbd method
     arr = np.zeros((n, n))
     b = np.zeros(n)
 
-    for x in range(0, n):
+    for x in range(n):
         arr[x, x] = 2 * w_bg[x] + 2 * w_ctr[x]
         b[x] = 2 * w_ctr[x]
-        for y in range(0, n):
+        for y in range(n):
             arr[x, x] += 2 * smoothness[x, y]
             arr[x, y] -= 2 * smoothness[x, y]
 
-    x = np.linalg.solve(arr, b)
-    return x
+    return np.linalg.solve(arr, b)
 
 
 def _path_length(path, graph):  # called by rbd method
@@ -280,48 +279,34 @@ def _rbd(grid, img_lab, img_gray):
     for v1 in vertices:
         smoothness[v1, vertices] *= adjacency[v1, vertices]
 
-    area = dict()
-    len_bnd = dict()
-    bnd_con = dict()
     w_bg = dict()
-    ctr = dict()
     w_ctr = dict()
 
     for v1 in vertices:
-        area[v1] = 0
-        len_bnd[v1] = 0
-        ctr[v1] = 0
-        for v2 in vertices:
-            d_app = geodesic[v1, v2]
-            d_spa = spatial[v1, v2]
-            w_spa = math.exp(- (d_spa * d_spa) / (2.0 * sigma_spa * sigma_spa))
-            area_i = _func_s(v1, v2, geodesic)
-            area[v1] += area_i
-            len_bnd[v1] += area_i * boundary[v2]
-            ctr[v1] += d_app * w_spa
-        bnd_con[v1] = len_bnd[v1] / math.sqrt(area[v1])
-        w_bg[v1] = 1.0 - math.exp(- (bnd_con[v1] * bnd_con[v1]) / (2 * sigma_bndcon * sigma_bndcon))
+        area_i = [_func_s(v1, v2, geodesic) for v2 in vertices]
+        area = np.sum(area_i)
+        len_bnd = sum(a * boundary[v2] for a, v2 in zip(area_i, vertices))
 
+        bnd_con = (len_bnd ** 2) / np.abs(area)
+        w_bg[v1] = 1.0 - math.exp(- bnd_con / (2 * (sigma_bndcon ** 2)))
+
+    sq_2_sigma_spa = 2.0 * (sigma_spa ** 2)
     for v1 in vertices:
-        w_ctr[v1] = 0
-        for v2 in vertices:
-            d_app = geodesic[v1, v2]
-            d_spa = spatial[v1, v2]
-            w_spa = math.exp(- (d_spa * d_spa) / (2.0 * sigma_spa * sigma_spa))
-            w_ctr[v1] += d_app * w_spa * w_bg[v2]
+        w_ctr[v1] = sum(geodesic[v1, v2] * math.exp(- (spatial[v1, v2] ** 2) / sq_2_sigma_spa) * w_bg[v2] for v2 in vertices)
 
     # normalise value for w_ctr
-
     min_value = min(w_ctr.values())
     max_value = max(w_ctr.values())
 
     # minVal = [key for key, value in w_ctr.iteritems() if value == min_value]
     # maxVal = [key for key, value in w_ctr.iteritems() if value == max_value]
 
+    val_span = max_value - min_value
     for v in vertices:
-        w_ctr[v] = (w_ctr[v] - min_value) / (max_value - min_value)
+        w_ctr[v] -= min_value
+        w_ctr[v] /= val_span
 
-    sal = img_gray.copy()
+    sal = np.copy(img_gray)
 
     x = _compute_saliency_cost(smoothness, w_bg, w_ctr)
 
@@ -356,7 +341,7 @@ def get_saliency_rbd(img, n_segments=250, compactness=10, sigma=1, enforce_conne
     try:
         res = _rbd(grid=segments_slic, img_lab=img_lab, img_gray=img_gray)
     except np.linalg.LinAlgError:
-        res = np.zeros_like(img_lab, dtype=np.float64)
+        res = np.zeros_like(img_gray, dtype=np.float64)
     return res
 
 
