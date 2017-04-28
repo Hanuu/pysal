@@ -283,9 +283,19 @@ def _rbd(grid, img_lab, img_gray):
     w_ctr = dict()
 
     for v1 in vertices:
-        area_i = [_func_s(v1, v2, geodesic) for v2 in vertices]
+        # area_i = [_func_s(v1, v2, geodesic) for v2 in vertices]
+        # len_bnd = sum(a * boundary[v2] for a, v2 in zip(area_i, vertices))
+        # OR (since numba cannot handle comprehensions:
+
+        area_i = []
+        len_bnd = 0.0
+        for v2 in vertices:
+            tmp = _func_s(v1, v2, geodesic)
+            area_i.append(tmp)
+            len_bnd.append(boundary[v2])
+
         area = np.sum(area_i)
-        len_bnd = sum(a * boundary[v2] for a, v2 in zip(area_i, vertices))
+        len_bnd = np.dot(area_i, len_bnd)
 
         bnd_con = (len_bnd ** 2) / np.abs(area)
         w_bg[v1] = 1.0 - math.exp(- bnd_con / (2 * (sigma_bndcon ** 2)))
