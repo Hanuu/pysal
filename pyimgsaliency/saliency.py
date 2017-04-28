@@ -287,8 +287,7 @@ def _rbd(grid, img_lab, img_gray):
         # len_bnd = sum(a * boundary[v2] for a, v2 in zip(area_i, vertices))
         # OR (since numba cannot handle comprehensions:
 
-        area_i = []
-        len_bnd = 0.0
+        area_i, len_bnd = [], []
         for v2 in vertices:
             tmp = _func_s(v1, v2, geodesic)
             area_i.append(tmp)
