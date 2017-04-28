@@ -302,7 +302,11 @@ def _rbd(grid, img_lab, img_gray):
 
     sq_2_sigma_spa = 2.0 * (sigma_spa ** 2)
     for v1 in vertices:
-        w_ctr[v1] = sum(geodesic[v1, v2] * math.exp(- (spatial[v1, v2] ** 2) / sq_2_sigma_spa) * w_bg[v2] for v2 in vertices)
+        # w_ctr[v1] = sum(geodesic[v1, v2] * math.exp(- (spatial[v1, v2] ** 2) / sq_2_sigma_spa) * w_bg[v2] for v2 in vertices)
+        tmp = 0.0
+        for v2 in vertices:
+            tmp += geodesic[v1, v2] * math.exp(- (spatial[v1, v2] ** 2) / sq_2_sigma_spa) * w_bg[v2]
+        w_ctr[v1] = tmp
 
     # normalise value for w_ctr
     min_value = min(w_ctr.values())
