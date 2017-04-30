@@ -2,6 +2,7 @@ import math
 # import sys
 # import operator
 import numpy as np
+import bottleneck as bn
 import networkx as nx
 # import matplotlib.pyplot as plt
 from scipy.signal import convolve2d
@@ -20,12 +21,12 @@ except ImportError:
 # import pdb
 
 
-def normalize(img, in_place=False):
+def normalize(img, in_place=False, max_val=1):
     if in_place:
-        img -= np.min(img)
+        img -= bn.nanmin(img)
     else:
-        img = img - np.min(img)
-    img /= np.max(img)
+        img = img - bn.nanmin(img)
+    img /= max_val * bn.nanmax(img)
     return img
 
 
@@ -63,7 +64,7 @@ def _generate_features(img, sigma_uniqueness=50, sigma_distribution=20, saliency
     wc_ij = wc_ij / wc_ij.sum(axis=1)[:, None]
     mu_i = np.dot(wc_ij, coordinate_segments_mean)
     distribution = np.dot(wc_ij, np.linalg.norm(coordinate_segments_mean - mu_i, axis=1) ** 2)
-    distribution = normalize(distribution, in_place=True)
+    normalize(distribution, in_place=True)
     distribution = np.array([distribution]).T
 
     # element uniqueness feature
@@ -71,7 +72,7 @@ def _generate_features(img, sigma_uniqueness=50, sigma_distribution=20, saliency
         -cdist(coordinate_segments_mean, coordinate_segments_mean) ** 2 / (2 * sigma_uniqueness ** 2))
     wp_ij = wp_ij / wp_ij.sum(axis=1)[:, None]
     uniqueness = np.sum(cdist(img_segments_mean, img_segments_mean) ** 2 * wp_ij, axis=1)
-    uniqueness = normalize(uniqueness)
+    normalize(uniqueness, in_place=True)
     uniqueness = np.array([uniqueness]).T
 
     saliency_assignment = uniqueness * np.exp(-saliency_assignment_k * distribution)
@@ -128,17 +129,9 @@ def get_saliency_salientdetect(img, n_segments=250, compactness=10, sigma=1, enf
         img_as_float(img), n_segments=n_segments, compactness=compactness, sigma=sigma,
         enforce_connectivity=enforce_connectivity, slic_zero=slic_zero)
 
-    img_min, img_max = np.min(img), np.max(img)
-    if img_min is 0 and img_max is 1:
-        img_ = 255 * img
-    else:
-        img_ = (img - img_min).astype(np.float64, copy=False)
-        img_ *= 255 / (img_max - img_min)
-    img_uint8 = img_.astype(np.uint8)
-    del img_
-
+    img_uint8 = normalize(img, in_place=False, max_val=255).astype(np.uint8)
     ret = calc_saliency_score(img_uint8, segment_labels, _load_dist_mat())
-    out = np.zeros(img.shape, dtype=(np.float64 if return_score else np.uint8))
+    out = np.zeros(img_uint8.shape, dtype=(np.float64 if return_score else np.uint8))
 
     if return_score:
         for saliency_score, pixels in ret.items():
@@ -326,9 +319,7 @@ def _rbd(grid, img_lab, img_gray):
     for v in vertices:
         sal[grid == v] = x[v]
 
-    # normalize to [0, 255[
-    sal -= np.min(sal)
-    sal *= 255.0 / np.max(sal)
+    normalize(sal, in_place=True, max_val=255)  # values are in [0, 255[
 
     return sal
 
@@ -385,8 +376,6 @@ def get_saliency_ft(img):
 
     sal = np.linalg.norm(mean_val - im_blurred, axis=2)
 
-    # normalize to [0, 255[
-    sal -= np.min(sal)
-    sal *= 255.0 / np.max(sal)
+    normalize(sal, in_place=True, max_val=255)  # values are in [0, 255[
 
     return sal

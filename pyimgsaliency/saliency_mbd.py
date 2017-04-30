@@ -5,6 +5,7 @@ import copy
 # import networkx as nx
 # import matplotlib.pyplot as plt
 import numpy as np
+import bottleneck as bn
 from scipy.spatial.distance import cdist
 from skimage.io import imread as skimage_imread
 from skimage.util import img_as_float
@@ -204,15 +205,15 @@ def get_saliency_mbd(img, method='b', border_thickness_percent=0.1):
             u_bottom = cdist(img_lab_unrolled, px_mean_bottom_2, metric='mahalanobis', VI=cov_bottom)
             u_bottom = u_bottom.reshape(img_lab_shape)
 
-            u_left /= np.max(u_left)
-            u_right /= np.max(u_right)
-            u_top /= np.max(u_top)
-            u_bottom /= np.max(u_bottom)
+            u_left /= bn.nanmax(u_left)
+            u_right /= bn.nanmax(u_right)
+            u_top /= bn.nanmax(u_top)
+            u_bottom /= bn.nanmax(u_bottom)
 
             u_max = np.maximum.reduce([u_left, u_right, u_top, u_bottom])
             u_final = ne.evaluate('(u_left + u_right + u_top + u_bottom) - u_max')
-            sal /= np.max(sal)
-            sal += u_final / np.max(u_final)
+            sal /= bn.nanmax(sal)
+            sal += u_final / bn.nanmax(u_final)
 
         # postprocessing
         # # apply centeredness map
@@ -224,12 +225,12 @@ def get_saliency_mbd(img, method='b', border_thickness_percent=0.1):
         xv, yv = np.meshgrid(np.arange(sal.shape[1]), np.arange(sal.shape[0]))
         w2, h2 = np.array(sal.shape) / 2
 
-        sal /= np.max(sal)
+        sal /= bn.nanmax(sal)
         sal = ne.evaluate('(1 - sqrt((xv - h2)**2 + (yv - w2)**2) / sqrt(w2**2 + h2**2)) * sal')
 
         # # increase bg/fg contrast
 
-        sal /= np.max(sal)
+        sal /= bn.nanmax(sal)
         sal = ne.evaluate('255.0 / (1 + exp(-10 * (sal - 0.5)))')
         result.append(sal)
 
