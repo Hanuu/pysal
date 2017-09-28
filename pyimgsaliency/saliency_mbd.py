@@ -204,15 +204,34 @@ def get_saliency_mbd(img, method='b', border_thickness_percent=0.1):
             u_bottom = cdist(img_lab_unrolled, px_mean_bottom_2, metric='mahalanobis', VI=cov_bottom)
             u_bottom = u_bottom.reshape(img_lab_shape)
 
-            u_left /= bn.nanmax(u_left)
-            u_right /= bn.nanmax(u_right)
-            u_top /= bn.nanmax(u_top)
-            u_bottom /= bn.nanmax(u_bottom)
+            u_left_max = bn.nanmax(u_left)
+            if 0 != u_left_max:
+                u_left /= u_left_max
+
+            u_right_max = bn.nanmax(u_right)
+            if 0 != u_right_max:
+                u_right /= u_right_max
+
+            u_top_max = bn.nanmax(u_top)
+            if 0 != u_top_max:
+                u_top /= u_top_max
+
+            u_bottom_max = bn.nanmax(u_bottom)
+            if 0 != u_bottom_max:
+                u_bottom /= u_bottom_max
 
             u_max = np.maximum.reduce([u_left, u_right, u_top, u_bottom])
             u_final = ne.evaluate('(u_left + u_right + u_top + u_bottom) - u_max')
-            sal /= bn.nanmax(sal)
-            sal += u_final / bn.nanmax(u_final)
+
+            sal_max = bn.nanmax(sal)
+            if 0 != sal_max:
+                sal /= sal_max
+
+            u_final_max = bn.nanmax(u_final)
+            if 0 != u_final_max:
+                sal += u_final / u_final_max
+            else:
+                sal += u_final
 
         # postprocessing
         # # apply centeredness map
@@ -224,12 +243,18 @@ def get_saliency_mbd(img, method='b', border_thickness_percent=0.1):
         xv, yv = np.meshgrid(np.arange(sal.shape[1]), np.arange(sal.shape[0]))
         w2, h2 = np.array(sal.shape) / 2
 
-        sal /= bn.nanmax(sal)
+        sal_max = bn.nanmax(sal)
+        if 0 != sal_max:
+            sal /= sal_max
+
         sal = ne.evaluate('(1 - sqrt((xv - h2)**2 + (yv - w2)**2) / sqrt(w2**2 + h2**2)) * sal')
 
         # # increase bg/fg contrast
 
-        sal /= bn.nanmax(sal)
+        sal_max = bn.nanmax(sal)
+        if 0 != sal_max:
+            sal /= sal_max
+
         sal = ne.evaluate('255.0 / (1 + exp(-10 * (sal - 0.5)))')
         result.append(sal)
 
