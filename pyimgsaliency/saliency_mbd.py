@@ -91,8 +91,7 @@ def mbd(img, num_iters):
 
     # l = np.copy(img)
     # u = np.copy(img)
-    d = np.empty_like(img)
-    d.fill(np.inf)
+    d = np.full_like(img, fill_value=np.inf)
 
     d[(0, -1), :] = 0
     d[:, (0, -1)] = 0
